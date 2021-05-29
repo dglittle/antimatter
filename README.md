@@ -138,11 +138,6 @@ This api consists of a set of global functions which operate on these trees, usu
 
 The api supports both javascript arrays and strings.
 
-# methods
-var sync8 = require('sync8')
-sync8.create_node(version, elems, end_cap, sort_key)
-
-
 # datastructure
 
 Here is an example sync8 node:
@@ -160,12 +155,6 @@ Here is an example sync8 node:
     }],
     next: null // a special child that always comes last, after the "nexts"
 }
-```
-
-# api
-
-``` js
-var sync8 = require('sync8')
 ```
 
 # methods
