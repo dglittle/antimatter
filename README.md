@@ -1,3 +1,5 @@
+<mark>blah</mark>
+
 antimatter: a pruning JSON CRDT.
 
 `var {antimatter, sync9, sync8} = require('@glittle/antimatter')`
