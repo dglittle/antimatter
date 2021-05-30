@@ -1,5 +1,3 @@
-<a href="https://glittle.org">blah</a>
-
 antimatter: a pruning JSON CRDT.
 
 `var {antimatter, sync9, sync8} = require('@glittle/antimatter')`
