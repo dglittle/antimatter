@@ -1,4 +1,4 @@
-<mark>blah</mark>
+<a href="https://glittle.org">blah</a>
 
 antimatter: a pruning JSON CRDT.
 
