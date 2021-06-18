@@ -1,5 +1,20 @@
 
-var sync8 = require('./index.js')
+var {antimatter} = require('./index.js')
+
+var A = antimatter.create((peer, x) => {
+    B.receive(x)
+})
+
+var B = antimatter.create((peer, x) => {
+    A.receive(x)
+})
+
+
+A.set([{range: '', content: 55}])
+
+console.log(JSON.stringify(A, null, '    '))
+
+
 
 // sync8.create_node = (version, elems, end_cap, sort_key)
 // var S = sync8.create_node('root', 'hi')
@@ -45,9 +60,9 @@ var sync8 = require('./index.js')
 
 
 
-var S = sync8.create_node('root', 'hello world!')
-sync8.break_node(S, 2)
-console.log(JSON.stringify(S))
+// var S = sync8.create_node('root', 'hello world!')
+// sync8.break_node(S, 2)
+// console.log(JSON.stringify(S))
 
 
 
