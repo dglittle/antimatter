@@ -1,402 +1,552 @@
-antimatter: a pruning JSON CRDT.
+# antimatter: a pruning JSON CRDT.
 
 `var {antimatter, sync9, sync8} = require('@glittle/antimatter')`
 
-API
+antimatter is a peer-to-peer network algorithm that keeps track of what can be pruned in a sync9 data structure, in order for peers to still be able to reconnect with each other and merge their changes. antimatter is implemented as a subclass of sync9, so an antimatter object is a sync9 object with additional methods.
+
+sync9 is a pruneable JSON CRDT -- JSON meaning it represents an arbitrary JSON datstructure, CRDT meaning this structure can be merged with other ones, and pruneable meaning that the meta-data necessary for this merging can also be removed when it is no longer needed (whereas CRDT's often keep track of this meta-data forever).
+
+sync8 is a pruneable sequence CRDT -- sequence meaning it represents a javascript string or array, CRDT and pruneable having the same meaning as for sync9 above. sync9 makes recursive use of sync8 structures to represent arbitrary JSON (for instance, a map is represented with a sync8 structure for each value, where the first element in the sequence is the value).
+
+# API
+
+# antimatter.create(send[, init])
+creates and returns a new antimatter object (or adds stuff to `init`)
+* `send`: a callback function to be called whenever this antimatter wants to send a message to a peer antimatter. the function takes two parameters: (peer, message), where "peer" is a string id of the peer to send to, and "message" is a javascript object to send to them, where ultimately we want to call "receive" on the target peer, and pass it "message" as a parameter.
+* `init`: (optional) an antimatter object to start with, which we'll add any properties to that it doesn't have, and we'll add all the antimatter methods to it, created to be able to serialize an antimatter instance as JSON, and then restore it later
 
 ``` js
-var antimatter_instance = antimatter.create(
-    send, // this function will get called when this antimatter
-          // wants to send a message to a peer antimatter,
-          // the function takes two paramters: (peer, message),
-          // where "peer" is a string id of the peer to send to,
-          // and "message" is a javascript object to send to them
-
-    init  // this is an antimatter object to start with,
-          // which we'll add any properties to that it doesn't have,
-          // and we'll add all the antimatter methods to it
-)
+var antimatter_instance = antimatter.create((peer, msg) => {
+    websockets[peer].send(JSON.stringify(msg))
+}, JSON.parse(fs.readFileSync('./antimatter.backup')))
 ```
+
+# antimatter.receive(message)
+let this antimatter object "receive" a message from another antimatter object, presumably from its `send` callback
 
 ``` js
-antimatter_instance.get or connect(
-    peer // string id of the peer we want to connect to;
-         // this method will trigger calling "send" with this peer
-)
+websocket.on('message', data => {
+    antimatter_instance.receive(JSON.parse(data))
+});
 ```
 
-``` js
-antimatter_instance.forget(
-    peer // string id of the peer we want to disconnect with,
-         // without creating a fissure
-)
-```
+# message
 
-``` js
-antimatter_instance.disconnect(
-    peer // string id of the peer we disconnected with;
-         // this will create a fissure to remember how to reconnect
-         // with this peer
-)
-```
+you generally do not need to mess with a message object directly, but here are the keys that may be present -- these keys are described in more detail below:
 
-``` js
-antimatter_instance.set(
-    ...patches // each patch is an object like this {range: '.life.meaning', content: 42};
-               // this method will apply the patches, and send them to
-               // our peers (using the "send" method passed to "create")
-)
-```
-
-``` js
-antimatter_instance.receive(
-    message // an object passed to another antimatter's "send" callback
-)
-```
-
-``` js
-var sync9_instance = sync9.create(
-    init  // this is a sync9 object to start with,
-          // which we'll add any properties to that it doesn't have,
-          // and we'll add all the sync9 methods to it
-)
-```
-
-``` js
-sync9_instance.read() // returns an instance of the json object
-                      // represented by this sync9 data-structure
-```
-
-``` js
-sync9_instance.generate_braid(
-    versions // set of versions; we want a list of edit operations since these versions
-             // (each key is a version, and it's value is "true")
-
-) // returns a list of "set" messages necessary to reconstruct the data,
-  // assuming the recipient already has the given versions
-```
-
-``` js
-sync9_instance.apply_bubbles(
-    to_bubble // map where keys are versions and values are "bubbles",
-              // each bubble represented with an array of two elements,
-              // the first element is the "bottom" of the bubble,
-              // and the second element is the "top" of the bubble;
-              // "bottom" and "top" make sense when viewing versions
-              // in a directed graph with the oldest version(s) at the top,
-              // and each version pointing up to it's parents.
-              // a bubble is then a set of versions where the only
-              // arrows leaving the bubble upward are from the "top" version,
-              // and the only arrows leaving the bubble downward are
-              // from the "bottom" version.
-              // this method effectively combines all the versions in a bubble
-              // into a single version, and may allow the datastructure
-              // to be compressed, since now we don't need to
-              // distinguish between certain versions that we used to need to
-)
-```
-
-``` js
-sync9_instance.add_version(
-    version,   // unique string associated with this edit
-    parents,   // a set of versions that this version is aware of,
-               // represented as a map with versions as keys, and values of true
-    patches,   // an array of patches, where each patch is an object
-               // like this {range: '.life.meaning', content: 42}
-    sort_keys, // (optional) an object where each key is an index,
-               // and the value is a sort_key to use with the patch
-               // at the given index in the "patches" array --
-               // a sort_key overrides the version for a patch
-               // for the purposes of sorting..
-               // this situation can arise when pruning
-)
-```
-
-``` js
-sync9_instance.ancestors(
-    versions, // set of versions (map with version-keys and values of true);
-              // we will return a set of versions which includes all these,
-              // as well as all their ancestors
-              // (their parents, and parents' parents, etc..) 
-    ignore_nonexistent, // boolean: true to supress throwing an error
-                        // when encountering a version which we don't have,
-                        // e.g. if we don't have one of the parents of a version
-)
-```
-
-
-
-
-
-
-
-# sync8
-
-sync8 is a sequence-CRDT, which is a syncronizable list. A sync8 datastructure is a tree, and you can uncover the list by traversing the tree in pre-order.
-
-This api consists of a set of global functions which operate on these trees, usually accepting a pointer to the root of the tree as a first parameter.
-
-The api supports both javascript arrays and strings.
-
-# datastructure
-
-Here is an example sync8 node:
 ``` js
 {
-    version: "root", // id associated with node
-    elems: "original document content.", // content, could be an array
-    deleted_by: {"version_42": true}, // i guess the content is deleted
-    end_cap: null, // used to support replaces
-    nexts: [{ // recursively nested sync8 node..
-        version: "version_42",
-        elems: "NEW STUFF!",
-        deleted_by: {}, // not deleted by anyone
-        next: null
-    }],
-    next: null // a special child that always comes last, after the "nexts"
+    cmd,
+    version, 
+    parents,
+    patches,
+    fissure,
+    unack_boundary,
+    min_leaves,
+    peer,
+    conn
 }
 ```
 
-# methods
+* `cmd`: any of the following strings:
+    * `get`: first message sent to a newly connected peer
+    * `get_back`: sent in response to `get`
+    * `forget`: used to disconnect without creating a fissure
+    * `forget_ack`: sent in response to `forget`
+    * `disconnect`: issued when we detect that a peer has disconnected
+    * `fissure`: sent to alert peers about a fissure
+    * `set`: sent to alert peers about a change in the document
+    * `ack1`: sent in response to `set`, but not right away; a peer will first send the `set` to all its other peers, and only after they have all responded with `ack1` will the peer send `ack1` to the originating peer
+    * `ack2`: sent after an originating peer has received `ack1` from all its peers
+    * `welcome`: sent in response to a `get`, basically contains the initial state of the document
+* `version`: some unique id
+* `parents`: set of parent versions represented as a map with version keys and true values
+* `patches`: array of patches, where each patch is an object like this: `{range: '.json.path', content: 'value'}`
+* `fissure`: a fissure object, which looks like this: `{a, b, conn, versions, time}`, where:
+    * `a`: peer id of peer on one side of disconnection
+    * `b`: peer id of peer on other side of disconnection
+    * `conn`: connection id
+    * `versions`: set of versions to protect, represented as a map with version keys and true values
+    * `time`: fissure creation time, as milliseconds since UNIX epoc
+* `unack_boundary`: set of versions, represented as a map with version keys and true values; used in a welcome message; if any of these versions, or any of their ancestors, were marked as being acknowledge by everyone, then un-mark them as such.. this is meant to deal with the issue of a peer disconnecting during the connection process itself, in which case we'll want to include these "unack" versions in the fissure
+* `min_leaves`: set of versions, represented as a map with version keys and true values; used in a welcome message; these versions and their ancestors are NOT unacknowledged, even if they are behind the unack_boundary
+* `peer`: the peer who sent the message
+* `conn`: the id of the connection over which the message was sent
 
-# `sync8.create_node`
+# antimatter_instance.get/connect(peer)
+triggers this antimatter object to send a `get` message to the given peer
 
-simple
 ``` js
-var S = sync8.create_node('root', 'hello world!')
+alice_antimatter_instance.get('bob')
 ```
 
-verbose
+# antimatter_instance.forget(peer)
+disconnect from the given peer without creating a fissure -- we don't need to reconnect with them.. it seems
+
 ``` js
-sync8.create_node(
-    version, // id associated with node
-    elems, // content, could be a string or array
-    end_cap, // you don't generally need to do this yourself,
-             // but when this method is called internally,
-             // this is used to help represent replaces
-    sort_key // this is an advanced feature, used for "pruning",
-             // but what it does is override the version for the purposes of sorting,
-             // which can be useful for pruning, by allowing a
-             // node to have a new version id, but still sort into the same
-             // place as before.. anyway..
-)
+alice_antimatter_instance.forget('bob')
 ```
 
-# `sync8.get`
+# antimatter_instance.disconnect(peer)
+if we detect that a peer has disconnected, let the antimatter object know by calling this method with the given peer -- this will create a fissure so we can reconnect with this peer if they come back
 
-simple
 ``` js
-var S = sync8.create_node('root', 'hello world!')
-var x = sync8.get(S, 6)
-console.log(x) // w
+alice_antimatter_instance.disconnect('bob')
 ```
 
-verbose
+# antimatter_instance.set(...patches)
+modify this antimatter object by applying the given patches. each patch looks like `{range: '.life.meaning', content: 42}`. calling this method will trigger calling the `send` callback to let our peers know about this change.
+
 ``` js
-sync8.get(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    i, // index into list (0 based)
-    is_anc, // a bit advanced.. a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us get the element
-            // at a particular index of what the list looked like in the past.
-            // the default is a function that always returns true.
-)
+antimatter_instance.set({range: '.life.meaning', content: 42})
 ```
 
-# `sync8.set`
+---
 
-simple
+# sync9.create([init])
+create a new sync9 object (or start with `init`, and add stuff to that).
+
 ``` js
-var S = sync8.create_node('root', 'hello world!')
-var x = sync8.set(S, 6, 'b')
-// well.. now it says 'hello borld!'
+var sync9_instance = sync9.create()
 ```
 
-verbose
+# sync9_instance.read()
+returns an instance of the json object represented by this sync9 data-structure
+
 ``` js
-sync8.set(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    i, // index into list (0 based)
-    v, // value to put at the given index
-    is_anc, // a bit advanced.. a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us set the element
-            // at a particular index of what the list looked like in the past.
-            // the default is a function that always returns true.
-)
+JSON.stringify(sync9_instance.read())
 ```
 
-# `sync8.length`
+# sync9_instance.generate_braid(versions)
+returns a list of `set` messages necessary to reconstruct the data in this sync9 datastructure, assuming the recipient already has the given `versions` (which is represented as an object where each key is a version, and each value is `true`).
 
-simple
 ``` js
-var S = sync8.create_node('root', 'hello world!')
-console.log(sync8.length(S)) // 12
+sync9_instance.generate_braid({alice2: true, bob3: true})
 ```
 
-verbose
+# sync9_instance.apply_bubbles(to_bubble)
+this method helps prune away meta data and compress stuff when we have determined that certain versions can be renamed to other versions -- these renamings are expressed in `to_bubble`, where keys are versions and values are "bubbles", each bubble represented with an array of two elements, the first element is the "bottom" of the bubble, and the second element is the "top" of the bubble; "bottom" and "top" make sense when viewing versions in a directed graph with the oldest version(s) at the top, and each version pointing up to it's parents. a bubble is then a set of versions where the only arrows leaving the bubble upward are from the "top" version, and the only arrows leaving the bubble downward are from the "bottom" version. this method effectively combines all the versions in a bubble into a single version, and may allow the data structure to be compressed, since now we don't need to distinguish between certain versions that we used to need to
+
 ``` js
-sync8.set(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    is_anc // a bit advanced.. a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us get the length
-            // of what the list looked like in the past.
-            // the default is a function that always returns true.
-)
+sync9_instance.apply_bubbles({alice4: ['bob5', 'alice4'], bob5: ['bob5', 'alice4']})
 ```
 
-# `sync8.add_version`
+# sync9_instance.add_version(version, parents, patches[, sort_keys])
+the main method for modifying a sync9 data structure.
+* `version`: unique string associated with this edit
+* `parents`: a set of versions that this version is aware of, represented as a map with versions as keys, and values of true
+* `patches`: an array of patches, where each patch is an object like this `{range: '.life.meaning', content: 42}`
+* `sort_keys`: (optional) an object where each key is an index, and the value is a sort_key to use with the patch at the given index in the `patches` array -- a sort_key overrides the version for a patch for the purposes of sorting.. this can be useful after doing some pruning.
 
-this method is used to insert, delete, or replace stuff in the list.
-
-simple
 ``` js
-var S = sync8.create_node('root', 'hello world!')
-sync8.add_version(S, 'v2', [[6, 5, 'globe']])
-// now it says: hello globe!
+sync9_instance.add_version('alice6',
+    {alice5: true, bob7: true},
+    [{range: '.a.b', content: 'c'}])
 ```
 
-verbose
+# sync9_instance.ancestors(versions, ignore_nonexistent=false)
+gather `versions` and all their ancestors into a set. `versions` is a set of versions, i.e. a map with version-keys and values of true -- we'll basically return a larger set. if `ignore_nonexistent` is `true`, then we won't throw an exception if we encounter a version that we don't have in our datastructure.
+
 ``` js
-sync8.add_version(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    version, // id associated with node
-    splices, // array of edits to make, each edit is itself an array,
-             // that looks like this: [offset, delete_this_many, insert_this],
-             // note that "insert_this" could be a string, or an array,
-             // depending on whether S represents a string or an array.
-    sort_key, // this is an advanced feature, used for "pruning",
-             // but what it does is override the version for the purposes of sorting,
-             // which can be useful for pruning, by allowing a
-             // node to have a new version id, but still sort into the same
-             // place as before.. anyway..
-    is_anc // a bit advanced.. a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us apply these edits
-            // to what the list looked like in the past.
-            // the default is a function that always returns true.
-)
+sync9_instance.ancestors({alice12: true, bob10: true})
 ```
 
-# `sync8.traverse`
+# sync9_instance.get_leaves(versions)
 
-this method traverses a sync8 tree in the proper order to read off the nodes in the order they appear in the list being represented.
 
-simple
-``` js
-var S = sync8.create_node('root', 'hello world!')
-sync8.add_version(S, 'v2', [[6, 5, 'globe']])
-sync8.traverse(S, () => {
 
-})
+        self.get_leaves = versions => {
+            var leaves = {...versions}
+            Object.keys(versions).forEach(v => {
+                Object.keys(self.T[v]).forEach(p => delete leaves[p])
+            })
+            return leaves
+        }
 
-// now it says: hello globe!
-```
+        self.parse_patch = patch => {
+            let x = self.parse_json_path(patch.range)
+            x.value = patch.content
+            return x
+        }
 
-verbose
-``` js
-sync8.traverse(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    is_anc, // a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us traverse
-            // what the list looked like in the past.
-            // (no default this time! but you can pass in: () => true)
-    cb, // this callback will get called for each node, as we traverse it,
-        // with these parameters: (
-        //      node, // the current sync8 node we are traversing
-        //      offset, // the number of list elements already encountered
-        //      has_nexts, // truthy if this node has children which
-        //                 // qualify to be traversed according to is_anc
-        //      prev, // if "node" is some node's special "next" child,
-        //            // then "prev" will be that node
-        //      version, // id associated with node
-        //      deleted // true if this node is deleted, according to is_anc
-        // )
-        // NOTE: if the callback returns exactly false,
-        // the traversal will stop right away
-    view_deleted, // should we call the callback for nodes which
-                  // are deleted according to is_anc?
-    tail_cb // advanced: if you set this callback,
-            // it will called for each node right after all
-            // that node's children have been processed,
-            // with the node as the sole parameter
-)
-```
+        self.parse_json_path = json_path => {
+            var ret = { path : [] }
+            var re = /^(delete)\s+|\.?([^\.\[ =]+)|\[((\-?\d+)(:\-?\d+)?|"(\\"|[^"])*")\]/g
+            var m
+            while (m = re.exec(json_path)) {
+                if (m[1]) ret.delete = true
+                else if (m[2]) ret.path.push(m[2])
+                else if (m[3] && m[5]) ret.slice = [JSON.parse(m[4]), JSON.parse(m[5].substr(1))]
+                else if (m[3]) ret.path.push(JSON.parse(m[3]))
+            }
+            return ret
+        }
 
-# `sync8.generate_braid`
+        return self
+    }
 
-this method traverses a sync8 tree in the proper order to read off the nodes in the order they appear in the list being represented.
+    sync8.create_node = (version, elems, end_cap, sort_key) => ({
+        version : version,
+        sort_key : sort_key,
+        elems : elems,
+        deleted_by : {},
+        end_cap : end_cap,
+        nexts : [],
+        next : null
+    })
 
-simple
-``` js
-var S = sync8.create_node('root', 'hello world!')
-sync8.add_version(S, 'v2', [[6, 5, 'globe']])
-var x = sync8.generate_braid(S, 'v2', x => x != 'v2')
-console.log(x) // [[6,5,"globe",null,"r"]]
-```
+    sync8.generate_braid = (S, version, is_anc) => {
+        var splices = []
 
-verbose
-``` js
-sync8.generate_braid(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    version, // the version we want to recover the edits for
-    is_anc, // a function that takes a version as input,
-            // and returns true if we should traverse that version,
-            // should we encounter it.. this let's us reconstruct what
-            // edits must have looked like in the past.
-            // (no default this time!)
-) // returns an array of edits,
-  // where each edit is itself an array that looks like:
-  // [offset, num_to_delete, what_to_insert, sort_key (or null), 'i'/'d'/'r' representing 'insert', 'delete' or 'replace'.. in case that's useful.. mainly this is used internally and I didn't bother to remove it]
-```
+        function add_ins(offset, ins, sort_key, end_cap) {
+            if (typeof(ins) !== 'string')
+                ins = ins.map(x => read_raw(x, () => false))
+            if (splices.length > 0) {
+                var prev = splices[splices.length - 1]
+                if (prev[0] + prev[1] === offset && !end_cap && (prev[4] === 'i' || (prev[4] === 'r' && prev[1] === 0))) {
+                    prev[2] = prev[2].concat(ins)
+                    return
+                }
+            }
+            splices.push([offset, 0, ins, sort_key, end_cap ? 'r' : 'i'])
+        }
 
-# `sync8.apply_bubbles`
+        function add_del(offset, del, ins) {
+            if (splices.length > 0) {
+                var prev = splices[splices.length - 1]
+                if (prev[0] + prev[1] === offset && prev[4] !== 'i') {
+                    prev[1] += del
+                    return
+                }
+            }
+            splices.push([offset, del, ins, null, 'd'])
+        }
+        
+        var offset = 0
+        function helper(node, _version, end_cap) {
+            if (_version === version) {
+                add_ins(offset, node.elems.slice(0), node.sort_key, end_cap)
+            } else if (node.deleted_by[version] && node.elems.length > 0) {
+                add_del(offset, node.elems.length, node.elems.slice(0, 0))
+            }
+            
+            if ((!_version || is_anc(_version)) && !Object.keys(node.deleted_by).some(is_anc)) {
+                offset += node.elems.length
+            }
+            
+            node.nexts.forEach(next => helper(next, next.version, node.end_cap))
+            if (node.next) helper(node.next, _version)
+        }
+        helper(S, null)
+        splices.forEach(s => {
+            // if we have replaces with 0 deletes,
+            // make them have at least 1 delete..
+            // this can happen when there are multiple replaces of the same text,
+            // and our code above will associate those deletes with only one of them
+            if (s[4] === 'r' && s[1] === 0) s[1] = 1
+        })
+        return splices
+    }
 
-this method prunes the tree. You basically tell it which versions to rename, and then based on the renamings, the algorithm may be able to join some nodes together that it couldn't before.
+    sync8.apply_bubbles = (S, to_bubble) => {
 
-simple
-``` js
-var S = sync8.create_node('root', 'hello world!')
-sync8.add_version(S, 'v2', [[6, 5, 'globe']], null, x => x != 'v2')
-console.log(JSON.stringify(S)) // {"version":"root","elems":"hello ","deleted_by":{},"end_cap":true,"nexts":[{"version":"v2","sort_key":null,"elems":"globe","deleted_by":{},"end_cap":null,"nexts":[],"next":null}],"next":{"version":null,"elems":"world","deleted_by":{"v2":true},"nexts":[],"next":{"version":null,"elems":"!","deleted_by":{},"nexts":[],"next":null}}}
+        sync8.traverse(S, () => true, node => {
+            if (to_bubble[node.version] && to_bubble[node.version][0] != node.version) {
+                if (!node.sort_key) node.sort_key = node.version
+                node.version = to_bubble[node.version][0]
+            }
 
-sync8.apply_bubbles(S, {'root': ['v2']})
-console.log(JSON.stringify(S)) // {"version":"v2","sort_key":"root","elems":"hello globe!","deleted_by":{},"nexts":[],"next":null}
-```
+            for (var x of Object.keys(node.deleted_by)) {
+                if (to_bubble[x]) {
+                    delete node.deleted_by[x]
+                    node.deleted_by[to_bubble[x][0]] = true
+                }
+            }
+        }, true)
 
-verbose
-``` js
-sync8.apply_bubbles(
-    S, // root node of sync8 tree (created from sync8.create_node)
-    to_bubble, // an object, where a key represents a version to rename,
-               // and the thing to rename it to lives in the first element of the
-               // value, which is an array (this is historical, and I'd like to just
-               // have the value be the thing to rename it to, alas)
-)
-```
+        function set_nnnext(node, next) {
+            while (node.next) node = node.next
+            node.next = next
+        }
 
-# `sync8.break_node`
+        do_line(S, S.version)
+        function do_line(node, version) {
+            var prev = null
+            while (node) {
+                if (node.nexts[0] && node.nexts[0].version == version) {
+                    for (let i = 0; i < node.nexts.length; i++) {
+                        delete node.nexts[i].version
+                        delete node.nexts[i].sort_key
+                        set_nnnext(node.nexts[i], i + 1 < node.nexts.length ? node.nexts[i + 1] : node.next)
+                    }
+                    node.next = node.nexts[0]
+                    node.nexts = []
+                }
 
-this method is pretty low-level -- you shouldn't need to call it, but, what it does is split a sync8 node into two nodes, where the first node's "next" points at the second node. This method is called interally by sync8.add_version to split a sync8 node, for instance, when performing an insertion.
+                if (node.deleted_by[version]) {
+                    node.elems = node.elems.slice(0, 0)
+                    node.deleted_by = {}
+                    if (prev) { node = prev; continue }
+                }
 
-simple
-``` js
-var S = sync8.create_node('root', 'hello world!')
-sync8.break_node(S, 2)
-console.log(JSON.stringify(S)) // {"version":"root","elems":"he","deleted_by":{},"nexts":[],"next":{"version":null,"elems":"llo world!","deleted_by":{},"nexts":[],"next":null}}
-```
+                var next = node.next
 
-verbose
-``` js
-sync8.break_node(
-    node, // sync8 node that you want to break in two
-    x, // 0 based offset into this node's content elems where you'd like to break it
-    end_cap, // boolean: set to true if we are breaking this node
-             // because of a replace operation
-    new_next // a sync8 node to add to "nexts" of the first of the two newly created nodes,
-             // which is useful when performing an insertion
-)
-```
+                if (!node.nexts.length && next && (!node.elems.length || !next.elems.length || (Object.keys(node.deleted_by).every(x => next.deleted_by[x]) && Object.keys(next.deleted_by).every(x => node.deleted_by[x])))) {
+                    if (!node.elems.length) node.deleted_by = next.deleted_by
+                    node.elems = node.elems.concat(next.elems)
+                    node.end_cap = next.end_cap
+                    node.nexts = next.nexts
+                    node.next = next.next
+                    continue
+                }
+
+                for (let n of node.nexts) do_line(n, n.version)
+
+                prev = node
+                node = next
+            }
+        }
+    }
+
+    sync8.get = (S, i, is_anc) => {
+        var ret = null
+        var offset = 0
+        sync8.traverse(S, is_anc ? is_anc : () => true, (node) => {
+            if (i - offset < node.elems.length) {
+                ret = node.elems[i - offset]
+                return false
+            }
+            offset += node.elems.length
+        })
+        return ret
+    }
+
+    sync8.set = (S, i, v, is_anc) => {
+        var offset = 0
+        sync8.traverse(S, is_anc ? is_anc : () => true, (node) => {
+            if (i - offset < node.elems.length) {
+                if (typeof node.elems == 'string') node.elems = node.elems.slice(0, i - offset) + v + node.elems.slice(i - offset + 1)
+                else node.elems[i - offset] = v
+                return false
+            }
+            offset += node.elems.length
+        })
+    }
+
+    sync8.length = (S, is_anc) => {
+        var count = 0
+        sync8.traverse(S, is_anc ? is_anc : () => true, node => {
+            count += node.elems.length
+        })
+        return count
+    }
+
+    sync8.break_node = (node, x, end_cap, new_next) => {
+        var tail = sync8.create_node(null, node.elems.slice(x), node.end_cap)
+        Object.assign(tail.deleted_by, node.deleted_by)
+        tail.nexts = node.nexts
+        tail.next = node.next
+        
+        node.elems = node.elems.slice(0, x)
+        node.end_cap = end_cap
+        node.nexts = new_next ? [new_next] : []
+        node.next = tail
+
+        return tail
+    }
+
+    sync8.add_version = (S, version, splices, sort_key, is_anc) => {
+
+        var rebased_splices = []
+        
+        function add_to_nexts(nexts, to) {
+            var i = binarySearch(nexts, function (x) {
+                if ((to.sort_key || to.version) < (x.sort_key || x.version)) return -1
+                if ((to.sort_key || to.version) > (x.sort_key || x.version)) return 1
+                return 0
+            })
+            nexts.splice(i, 0, to)
+        }
+        
+        var si = 0
+        var delete_up_to = 0
+        
+        var process_patch = (node, offset, has_nexts, prev, _version, deleted) => {
+            var s = splices[si]
+            if (!s) return false
+            
+            if (deleted) {
+                if (s[1] == 0 && s[0] == offset) {
+                    if (node.elems.length == 0 && !node.end_cap && has_nexts) return
+                    var new_node = sync8.create_node(version, s[2], null, sort_key)
+
+                    rebased_splices.push([rebase_offset, 0, s[2]])
+
+                    if (node.elems.length == 0 && !node.end_cap)
+                        add_to_nexts(node.nexts, new_node)
+                    else
+                        sync8.break_node(node, 0, undefined, new_node)
+                    si++
+                }
+                return            
+            }
+            
+            if (s[1] == 0) {
+                var d = s[0] - (offset + node.elems.length)
+                if (d > 0) return
+                if (d == 0 && !node.end_cap && has_nexts) return
+                var new_node = sync8.create_node(version, s[2], null, sort_key)
+
+                rebased_splices.push([rebase_offset + s[0] - offset, 0, s[2]])
+
+                if (d == 0 && !node.end_cap) {
+                    add_to_nexts(node.nexts, new_node)
+                } else {
+                    sync8.break_node(node, s[0] - offset, undefined, new_node)
+                }
+                si++
+                return
+            }
+            
+            if (delete_up_to <= offset) {
+                var d = s[0] - (offset + node.elems.length)
+                if (d >= 0) return
+                delete_up_to = s[0] + s[1]
+                
+                if (s[2]) {
+                    var new_node = sync8.create_node(version, s[2], null, sort_key)
+
+                    rebased_splices.push([rebase_offset + s[0] - offset, 0, s[2]])
+
+                    if (s[0] == offset && prev && prev.end_cap) {
+                        add_to_nexts(prev.nexts, new_node)
+                    } else {
+                        sync8.break_node(node, s[0] - offset, true, new_node)
+                        return
+                    }
+                } else {
+                    if (s[0] == offset) {
+                    } else {
+                        sync8.break_node(node, s[0] - offset)
+                        return
+                    }
+                }
+            }
+            
+            if (delete_up_to > offset) {
+                if (delete_up_to <= offset + node.elems.length) {
+                    if (delete_up_to < offset + node.elems.length) {
+                        sync8.break_node(node, delete_up_to - offset)
+                    }
+                    si++
+                }
+                node.deleted_by[version] = true
+
+                rebased_splices.push([rebase_offset, node.elems.length, ''])
+
+                return
+            }
+        }
+        
+        var f = is_anc || (() => true)
+        var exit_early = {}
+        var offset = 0
+        var rebase_offset = 0
+        function traverse(node, prev, version) {
+            var rebase_deleted = Object.keys(node.deleted_by).length > 0
+            if (!version || f(version)) {
+                var has_nexts = node.nexts.find(next => f(next.version))
+                var deleted = Object.keys(node.deleted_by).some(version => f(version))
+                if (process_patch(node, offset, has_nexts, prev, version, deleted) == false) throw exit_early
+                if (!deleted) offset += node.elems.length
+            }
+            if (!rebase_deleted) rebase_offset += node.elems.length
+
+            for (var next of node.nexts) traverse(next, null, next.version)
+            if (node.next) traverse(node.next, node, version)
+        }
+        try {
+            traverse(S, null, S.version)
+        } catch (e) {
+            if (e != exit_early) throw e
+        }
+
+        return rebased_splices
+    }
+
+    sync8.traverse = (S, f, cb, view_deleted, tail_cb) => {
+        var exit_early = {}
+        var offset = 0
+        function helper(node, prev, version) {
+            var has_nexts = node.nexts.find(next => f(next.version))
+            var deleted = Object.keys(node.deleted_by).some(version => f(version))
+            if (view_deleted || !deleted) {
+                if (cb(node, offset, has_nexts, prev, version, deleted) == false)
+                    throw exit_early
+                offset += node.elems.length
+            }
+            for (var next of node.nexts)
+                if (f(next.version)) helper(next, null, next.version)
+            if (node.next) helper(node.next, node, version)
+            else if (tail_cb) tail_cb(node)
+        }
+        try {
+            helper(S, null, S.version)
+        } catch (e) {
+            if (e != exit_early) throw e
+        }
+    }
+
+    // modified from https://stackoverflow.com/questions/22697936/binary-search-in-javascript
+    function binarySearch(ar, compare_fn) {
+        var m = 0;
+        var n = ar.length - 1;
+        while (m <= n) {
+            var k = (n + m) >> 1;
+            var cmp = compare_fn(ar[k]);
+            if (cmp > 0) {
+                m = k + 1;
+            } else if(cmp < 0) {
+                n = k - 1;
+            } else {
+                return k;
+            }
+        }
+        return m;
+    }
+})()
+
+
+
+
+
+
+
+# 
+
+create a new antimatter instance.
+
+# `self.read(is_anc)`
+
+read the contents of this JSON CRDT as a regular json datastructure.
+
+# `self.set(...patches)`
+
+modify the contents of this JSON CRDT.
+
+# `self.get(peer)`
+
+connect with the given peer.
+
+# `self.forget(peer)`
+
+disconnect from the given peer, and don't save information necessary for reconnecting.
+
+# `self.disconnect(peer)`
+
+tell the antimatter object that the given peer has disconnected, which will generate a so-called "fissure" object to remember the information necessary to reconnect with this peer in the future.
+
+# `self.receive({cmd, version, parents, patches, fissure, versions, fissures, unack_boundary, min_leaves, peer, conn})`
+
+give this antimatter object the argument passed to the `send` callback of another antimatter object.
+
