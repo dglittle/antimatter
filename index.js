@@ -544,7 +544,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
                 if (!parse.slice) {
                     if (cur.t != 'val') throw 'bad'
                     var len = sync8.length(cur.S, is_anc)
-                    sync8.add_version(cur.S, version, [[0, len, [parse.delete ? null : make_lit(parse.value)]]], sort_key, is_anc)
+                    sync8.add_version(cur.S, version, [[0, len, [parse.delete ? null : make_lit(parse.value)], sort_key]], is_anc)
                     rebased_patches.push(patch)
                 } else {
                     if (typeof parse.value === 'string' && cur.t !== 'str')
@@ -562,7 +562,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
                         if (r1 < 0 || Object.is(r1, -0)) r1 = len + r1
                     }
 
-                    var rebased_splices = sync8.add_version(cur.S, version, [[r0, r1 - r0, parse.value]], sort_key, is_anc)
+                    var rebased_splices = sync8.add_version(cur.S, version, [[r0, r1 - r0, parse.value, sort_key]], is_anc)
                     for (let rebased_splice of rebased_splices) rebased_patches.push(`${parse.path.map(x => `[${JSON.stringify(x)}]`).join('')}[${rebased_splice[0]}:${rebased_splice[0] + rebased_splice[1]}] = ${JSON.stringify(rebased_splice[2])}`)
                 }
             })
@@ -665,11 +665,11 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
     }
 
     sync8.create_node = (version, elems, end_cap, sort_key) => ({
-        version : version,
-        sort_key : sort_key,
-        elems : elems,
+        version,
+        sort_key,
+        elems,
+        end_cap,
         deleted_by : {},
-        end_cap : end_cap,
         nexts : [],
         next : null
     })
@@ -834,7 +834,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
         return tail
     }
 
-    sync8.add_version = (S, version, splices, sort_key, is_anc) => {
+    sync8.add_version = (S, version, splices, is_anc) => {
 
         var rebased_splices = []
         
@@ -853,6 +853,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
         var process_patch = (node, offset, has_nexts, prev, _version, deleted) => {
             var s = splices[si]
             if (!s) return false
+            var sort_key = s[3]
             
             if (deleted) {
                 if (s[1] == 0 && s[0] == offset) {
