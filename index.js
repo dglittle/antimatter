@@ -65,7 +65,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
             } else if (cmd == 'forget_ack') {
                 self.forget_cbs[peer]()
             } else if (cmd == 'disconnect') {
-                if (!self.peers[peer]) return
+                if (!self.peers[peer]) throw 'bad'
                 let conn = self.peers[peer]
                 delete self.peers[peer]
 
