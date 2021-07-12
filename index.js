@@ -65,11 +65,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
             } else if (cmd == 'forget_ack') {
                 self.forget_cbs[peer]()
             } else if (cmd == 'disconnect') {
-<<<<<<< HEAD
                 if (!self.peers[peer]) throw 'bad'
-=======
-                if (!self.peers[peer]) return
->>>>>>> 92fccd2b82a008a88a4147b5e02d2738e031d093
                 let conn = self.peers[peer]
                 delete self.peers[peer]
 
@@ -548,11 +544,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
                 if (!parse.slice) {
                     if (cur.t != 'val') throw 'bad'
                     var len = sync8.length(cur.S, is_anc)
-<<<<<<< HEAD
                     sync8.add_version(cur.S, version, [[0, len, [parse.delete ? null : make_lit(parse.value)], sort_key]], is_anc)
-=======
-                    sync8.add_version(cur.S, version, [[0, len, [parse.delete ? null : make_lit(parse.value)]]], sort_key, is_anc)
->>>>>>> 92fccd2b82a008a88a4147b5e02d2738e031d093
                     rebased_patches.push(patch)
                 } else {
                     if (typeof parse.value === 'string' && cur.t !== 'str')
@@ -570,11 +562,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
                         if (r1 < 0 || Object.is(r1, -0)) r1 = len + r1
                     }
 
-<<<<<<< HEAD
                     var rebased_splices = sync8.add_version(cur.S, version, [[r0, r1 - r0, parse.value, sort_key]], is_anc)
-=======
-                    var rebased_splices = sync8.add_version(cur.S, version, [[r0, r1 - r0, parse.value]], sort_key, is_anc)
->>>>>>> 92fccd2b82a008a88a4147b5e02d2738e031d093
                     for (let rebased_splice of rebased_splices) rebased_patches.push(`${parse.path.map(x => `[${JSON.stringify(x)}]`).join('')}[${rebased_splice[0]}:${rebased_splice[0] + rebased_splice[1]}] = ${JSON.stringify(rebased_splice[2])}`)
                 }
             })
@@ -677,19 +665,11 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
     }
 
     sync8.create_node = (version, elems, end_cap, sort_key) => ({
-<<<<<<< HEAD
         version,
         sort_key,
         elems,
         end_cap,
         deleted_by : {},
-=======
-        version : version,
-        sort_key : sort_key,
-        elems : elems,
-        deleted_by : {},
-        end_cap : end_cap,
->>>>>>> 92fccd2b82a008a88a4147b5e02d2738e031d093
         nexts : [],
         next : null
     })
@@ -854,11 +834,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
         return tail
     }
 
-<<<<<<< HEAD
     sync8.add_version = (S, version, splices, is_anc) => {
-=======
-    sync8.add_version = (S, version, splices, sort_key, is_anc) => {
->>>>>>> 92fccd2b82a008a88a4147b5e02d2738e031d093
 
         var rebased_splices = []
         

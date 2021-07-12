@@ -1,6 +1,6 @@
 {
   "name": "@glittle/antimatter",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "antimatter: a pruning JSON CRDT",
   "main": "index.js",
   "license": "MIT",
