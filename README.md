@@ -21,7 +21,7 @@ var antimatter_instance = antimatter.create((peer, msg) => {
 }, JSON.parse(fs.readFileSync('./antimatter.backup')))
 ```
 
-# antimatter.receive(message)
+# antimatter_instance.receive(message)
 let this antimatter object "receive" a message from another antimatter object, presumably from its `send` callback
 
 ``` js
