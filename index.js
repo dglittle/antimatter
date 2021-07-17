@@ -324,7 +324,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
         return self
     }
 
-    sync9.create = self => {       
+    sync9.create = self => {
         self = self ?? {}     
         self.S = self.S ?? null
         self.T = self.T ?? {}
