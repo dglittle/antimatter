@@ -86,16 +86,16 @@ sent to alert peers about a change in the document. the change is represented as
 }
 ```
 
-## message `ack1`
-sent in response to `set`, but not right away; a peer will first send the `set` to all its other peers, and only after they have all responded with `ack1` will the peer send `ack1` to the originating peer
+## message local `ack`
+sent in response to `set`, but not right away; a peer will first send the `set` to all its other peers, and only after they have all responded with a local `ack` will the peer send a local `ack` to the originating peer
 ``` js
-{cmd: 'ack1', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
+{cmd: 'ack', seen: 'local', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
 ```
 
-## message `ack2`
-sent after an originating peer has received `ack1` from all its peers, or by any peer who receives it to all its peers, so that everyone may come to know that this version has been seen by everyone in this peer group.
+## message global `ack`
+sent after an originating peer has received a local `ack` from all its peers, or by any peer who receives it to all its peers, so that everyone may come to know that this version has been seen by everyone in this peer group.
 ``` js
-{cmd: 'ack2', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
+{cmd: 'ack', seen: 'global', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
 ```
 
 ## message `welcome`
