@@ -24,7 +24,7 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
             orig_send(to, {peer: self.id, conn: self.peers[to], ...msg})
         }
 
-        self.receive = ({cmd, version, parents, patches, fissure, versions, fissures, unack_boundary, min_leaves, peer, conn}) => {
+        self.receive = ({cmd, version, parents, patches, fissure, versions, fissures, unack_boundary, min_leaves, seen, peer, conn}) => {
             if (cmd == 'get' || cmd == 'get_back') {
                 if (self.peers[peer]) throw 'bad'
                 self.peers[peer] = conn
@@ -72,17 +72,17 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
 
                 check_ack_count(version)
                 return rebased_patches
-            } else if (cmd == 'ack1') {
+            } else if (cmd == 'ack' && seen == 'local') {
                 if (self.acks_in_process[version]) {
                     self.acks_in_process[version].count--
                     check_ack_count(version)
                 }
-            } else if (cmd == 'ack2') {
+            } else if (cmd == 'ack' && seen == 'global') {
                 if (!self.T[version]) return
                 if (self.ancestors(self.unack_boundary)[version]) return
                 if (self.ancestors(self.acked_boundary)[version]) return
                 add_full_ack_leaf(version)
-                for (let p of Object.keys(self.peers)) if (p != peer) send(p, {cmd: 'ack2', version})
+                for (let p of Object.keys(self.peers)) if (p != peer) send(p, {cmd, seen, version})
 
             } else if (cmd == 'welcome') {
                 var versions_to_add = {}
@@ -313,10 +313,10 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
         function check_ack_count(version) {
             if (self.acks_in_process[version] && self.acks_in_process[version].count == 0) {
                 if (self.acks_in_process[version].origin) {
-                    send(self.acks_in_process[version].origin, {cmd: 'ack1', version})
+                    send(self.acks_in_process[version].origin, {cmd: 'ack', seen: 'local', version})
                 } else {
                     add_full_ack_leaf(version)
-                    for (let p of Object.keys(self.peers)) send(p, {cmd: 'ack2', version})
+                    for (let p of Object.keys(self.peers)) send(p, {cmd: 'ack', seen: 'global', version})
                 }
             }
         }
