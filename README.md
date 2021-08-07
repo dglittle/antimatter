@@ -32,48 +32,91 @@ websocket.on('message', data => {
 });
 ```
 
-# message
+you generally do not need to mess with a message object directly, but here are the various message objects you might see:
 
-you generally do not need to mess with a message object directly, but here are the keys that may be present -- these keys are described in more detail below:
+## message `get` or `get_back`
+`get` is the first message sent to a newly connected peer, and it will respond with `get_back`
+``` js
+{cmd: 'get', peer: 'PEER_ID', conn: 'CONN_ID'}
+```
 
+## message `forget`
+used to disconnect without creating a fissure
+``` js
+{cmd: 'forget', peer: 'PEER_ID', conn: 'CONN_ID'}
+```
+
+## message `forget_ack`
+sent in response to `forget`
+``` js
+{cmd: 'forget_ack', peer: 'PEER_ID', conn: 'CONN_ID'}
+```
+
+## message `disconnect`
+issued locally when we detect that a peer has disconnected, in which case we'll set `fissure` to `true`; or when we are forgetting a peer (causing a disconnection), in which case we'll set `fissure` to `false`.
+``` js
+{cmd: 'disconnect', peer: 'PEER_ID', fissure: true or false}
+```
+
+## message `fissure`
+sent to alert peers about a fissure. the fissure object contains information about the two peers involved in the fissure, the specific connection id that broke, the versions that need to be protected, and the time of the fissure (in case we want to ignore it after some time).
 ``` js
 {
-    cmd,
-    version, 
-    parents,
-    patches,
-    fissure,
-    unack_boundary,
-    min_leaves,
-    peer,
-    conn
+    cmd: 'fissure',
+    fissure: {
+        a: 'PEER_A_ID',
+        b: 'PEER_B_ID',
+        conn: 'CONN_ID',
+        versions: {'VERSION_ID': true, ...},
+        time: Date.now()
+    }
 }
 ```
 
-* `cmd`: any of the following strings:
-    * `get`: first message sent to a newly connected peer
-    * `get_back`: sent in response to `get`
-    * `forget`: used to disconnect without creating a fissure
-    * `forget_ack`: sent in response to `forget`
-    * `disconnect`: issued when we detect that a peer has disconnected
-    * `fissure`: sent to alert peers about a fissure
-    * `set`: sent to alert peers about a change in the document
-    * `ack1`: sent in response to `set`, but not right away; a peer will first send the `set` to all its other peers, and only after they have all responded with `ack1` will the peer send `ack1` to the originating peer
-    * `ack2`: sent after an originating peer has received `ack1` from all its peers
-    * `welcome`: sent in response to a `get`, basically contains the initial state of the document
-* `version`: some unique id
-* `parents`: set of parent versions represented as a map with version keys and true values
-* `patches`: array of patches, where each patch is an object like this: `{range: '.json.path', content: 'value'}`
-* `fissure`: a fissure object, which looks like this: `{a, b, conn, versions, time}`, where:
-    * `a`: peer id of peer on one side of disconnection
-    * `b`: peer id of peer on other side of disconnection
-    * `conn`: connection id
-    * `versions`: set of versions to protect, represented as a map with version keys and true values
-    * `time`: fissure creation time, as milliseconds since UNIX epoc
-* `unack_boundary`: set of versions, represented as a map with version keys and true values; used in a welcome message; if any of these versions, or any of their ancestors, were marked as being acknowledge by everyone, then un-mark them as such.. this is meant to deal with the issue of a peer disconnecting during the connection process itself, in which case we'll want to include these "unack" versions in the fissure
-* `min_leaves`: set of versions, represented as a map with version keys and true values; used in a welcome message; these versions and their ancestors are NOT unacknowledged, even if they are behind the unack_boundary
-* `peer`: the peer who sent the message
-* `conn`: the id of the connection over which the message was sent (useful for disambiguating fissures between the same peers)
+## message `set`
+sent to alert peers about a change in the document. the change is represented as a version, with a unique id, a set of parent versions (the most recent versions known before adding this version), and an array of patches, where the offsets in the patches do not take into account the application of other patches in the same array.
+``` js
+{
+    cmd: 'set',
+    version: 'VERSION_ID',
+    parents: {'PARENT_VERSION_ID': true, ...},
+    patches: [
+        {range: '.json.path.a.b', content: 42}, ...
+    ]
+}
+```
+
+## message `ack1`
+sent in response to `set`, but not right away; a peer will first send the `set` to all its other peers, and only after they have all responded with `ack1` will the peer send `ack1` to the originating peer
+``` js
+{cmd: 'ack1', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
+```
+
+## message `ack2`
+sent after an originating peer has received `ack1` from all its peers, or by any peer who receives it to all its peers, so that everyone may come to know that this version has been seen by everyone in this peer group.
+``` js
+{cmd: 'ack2', version: 'VERSION_ID', peer: 'PEER_ID', conn: 'CONN_ID'}
+```
+
+## message `welcome`
+sent in response to a `get`, basically contains the initial state of the document; `welcome` messages are also propogated to our peers, with the inclusion of two extra fields: `unack_boundary` and `min_leaves` (these are meant to deal with the issue of a peer disconnecting during the connection process itself, in which case we'll want to include these "unack" versions in the resulting fissure)
+``` js
+{
+    cmd: 'welcome',
+    versions: [each version looks like a set message...],
+    fissures: [each fissure looks like the fissure property in a fissure message...],
+    parents: {'PARENT_VERSION_ID': true,
+        ...versions you must have before consuming these new versions},
+
+    unack_boundary: {'VERSION_ID': true,
+        ...mark these and their ancestors as not-globally-acknowledged,
+        even if they were marked as such...},
+    min_leaves: {'VERSION_ID': true,
+        ...protect these and their ancestors from the unack_boundary's unacknowledging...},
+
+    peer: 'PEER_ID', conn: 'CONN_ID'
+}
+```
 
 # antimatter_instance.get(peer) or connect(peer)
 connect to the given peer -- triggers this antimatter object to send a `get` message to the given peer
