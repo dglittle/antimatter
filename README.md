@@ -8,6 +8,8 @@ sync9 is a pruneable JSON CRDT -- JSON meaning it represents an arbitrary JSON d
 
 sync8 is a pruneable sequence CRDT -- sequence meaning it represents a javascript string or array, CRDT and pruneable having the same meaning as for sync9 above. sync9 makes recursive use of sync8 structures to represent arbitrary JSON (for instance, a map is represented with a sync8 structure for each value, where the first element in the sequence is the value).
 
+[click here to see this README side-by-side with the source code.](https://dglittle.github.io/antimatter/doc.html)
+
 # API
 
 # antimatter.create(send[, init])
