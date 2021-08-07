@@ -24,29 +24,6 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
             orig_send(to, {peer: self.id, conn: self.peers[to], ...msg})
         }
 
-        self.get = peer => {
-            send(peer, {cmd: 'get', conn: Math.random().toString(36).slice(2)})
-        }
-        self.connect = self.get
-
-        self.forget = async peer => {
-            await new Promise(done => {
-                self.forget_cbs[peer] = done
-                send(peer, {cmd: 'forget'})
-                self.receive({cmd: 'disconnect', peer, fissure: false})
-            })
-        }
-
-        self.disconnect = peer => {
-            self.receive({cmd: 'disconnect', peer, fissure: true})
-        }
-
-        self.set = (...patches) => {
-            var version = `${self.next_seq++}@${self.id}`
-            self.receive({cmd: 'set', version, parents: {...self.current_version}, patches})
-            return version
-        }
-
         self.receive = ({cmd, version, parents, patches, fissure, versions, fissures, unack_boundary, min_leaves, peer, conn}) => {
             if (cmd == 'get' || cmd == 'get_back') {
                 if (self.peers[peer]) throw 'bad'
@@ -194,6 +171,29 @@ if (typeof module != 'undefined') module.exports = {antimatter, sync9, sync8}
 
                 return rebased_patches
             }
+        }
+
+        self.get = peer => {
+            send(peer, {cmd: 'get', conn: Math.random().toString(36).slice(2)})
+        }
+        self.connect = self.get
+
+        self.forget = async peer => {
+            await new Promise(done => {
+                self.forget_cbs[peer] = done
+                send(peer, {cmd: 'forget'})
+                self.receive({cmd: 'disconnect', peer, fissure: false})
+            })
+        }
+
+        self.disconnect = peer => {
+            self.receive({cmd: 'disconnect', peer, fissure: true})
+        }
+
+        self.set = (...patches) => {
+            var version = `${self.next_seq++}@${self.id}`
+            self.receive({cmd: 'set', version, parents: {...self.current_version}, patches})
+            return version
         }
 
         function prune() {
